@@ -1,0 +1,265 @@
+.MODEL SMALL
+.STACK 100H
+.DATA
+    msg1    DB 13,10,'Simple Calculator',13,10,'$'
+    msg2    DB 13,10,'Enter first number: $'
+    msg3    DB 13,10,'Enter second number: $'
+    msg4    DB 13,10,'Choose operation:',13,10
+            DB '1. Addition',13,10
+            DB '2. Subtraction',13,10
+            DB '3. Multiplication',13,10
+            DB '4. Division',13,10
+            DB '5. Exit',13,10
+            DB 'Choice: $'
+    msg5    DB 13,10,'Result: $'
+    msg6    DB 13,10,'Invalid input! Please enter numbers only.$'
+    msg7    DB 13,10,'Division by zero is not allowed!$'
+    msg8    DB 13,10,'Do you want to continue? (Y/N): $'
+    num1    DW 0
+    num2    DW 0
+    result  DW 0
+
+.CODE
+MAIN PROC
+    MOV AX, @DATA
+    MOV DS, AX
+
+CALC_LOOP:
+    ; Clear screen
+    MOV AH, 0
+    MOV AL, 3
+    INT 10H
+
+    ; Display welcome message
+    MOV AH, 9
+    LEA DX, msg1
+    INT 21H
+
+    ; Get first number
+    MOV AH, 9
+    LEA DX, msg2
+    INT 21H
+    CALL GET_NUM
+    CMP AX, 0FFFFh    ; Check for invalid input
+    JE INVALID_INPUT
+    MOV num1, AX
+
+    ; Get second number
+    MOV AH, 9
+    LEA DX, msg3
+    INT 21H
+    CALL GET_NUM
+    CMP AX, 0FFFFh    ; Check for invalid input
+    JE INVALID_INPUT
+    MOV num2, AX
+
+    ; Show operation menu
+    MOV AH, 9
+    LEA DX, msg4
+    INT 21H
+
+    ; Get operation choice
+    MOV AH, 1
+    INT 21H
+    SUB AL, '0'    ; Convert ASCII to number
+
+    ; Process operation
+    CMP AL, 1
+    JE ADD_NUM
+    CMP AL, 2
+    JE SUB_NUM
+    CMP AL, 3
+    JE MUL_NUM
+    CMP AL, 4
+    JE DIV_NUM
+    CMP AL, 5
+    JE EXIT
+    JMP INVALID_INPUT
+
+ADD_NUM:
+    MOV AX, num1
+    ADD AX, num2
+    MOV result, AX
+    JMP SHOW_RESULT
+
+SUB_NUM:
+    MOV AX, num1
+    SUB AX, num2
+    MOV result, AX
+    JMP SHOW_RESULT
+
+MUL_NUM:
+    MOV AX, num1
+    IMUL num2
+    MOV result, AX
+    JMP SHOW_RESULT
+
+DIV_NUM:
+    CMP num2, 0
+    JE DIV_ZERO
+    MOV DX, 0
+    MOV AX, num1
+    CWD
+    IDIV num2
+    MOV result, AX
+    JMP SHOW_RESULT
+
+DIV_ZERO:
+    MOV AH, 9
+    LEA DX, msg7
+    INT 21H
+    JMP CONTINUE_ASK
+
+INVALID_INPUT:
+    MOV AH, 9
+    LEA DX, msg6
+    INT 21H
+    JMP CONTINUE_ASK
+
+SHOW_RESULT:
+    MOV AH, 9
+    LEA DX, msg5
+    INT 21H
+    MOV AX, result
+    CALL PRINT_NUM
+
+CONTINUE_ASK:
+    MOV AH, 9
+    LEA DX, msg8
+    INT 21H
+    
+    MOV AH, 1
+    INT 21H
+    CMP AL, 'Y'
+    JE CALC_LOOP
+    CMP AL, 'y'
+    JE CALC_LOOP
+
+EXIT:
+    MOV AH, 4CH
+    INT 21H
+
+MAIN ENDP
+
+GET_NUM PROC
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    
+    MOV BX, 0
+    MOV CX, 10
+    MOV DX, 0     ; Sign flag (0 = positive, 1 = negative)
+
+    MOV AH, 1
+    INT 21H
+    CMP AL, '-'   ; Check for negative sign
+    JNE CHECK_DIGIT
+    MOV DX, 1     ; Set negative flag
+    MOV AH, 1
+    INT 21H
+
+CHECK_DIGIT:
+    CMP AL, 13    ; Check for Enter
+    JE INPUT_DONE
+    CMP AL, '0'   ; Check if valid digit
+    JL INVALID
+    CMP AL, '9'
+    JG INVALID
+    
+    SUB AL, '0'   ; Convert to number
+    MOV AH, 0
+    PUSH AX
+    
+    MOV AX, BX
+    MUL CX        ; Multiply by 10
+    POP BX
+    ADD AX, BX    ; Add new digit
+    MOV BX, AX
+    
+INPUT_LOOP:
+    MOV AH, 1
+    INT 21H
+    CMP AL, 13    ; Check for Enter
+    JE INPUT_DONE
+    CMP AL, '0'   ; Check if valid digit
+    JL INVALID
+    CMP AL, '9'
+    JG INVALID
+    
+    SUB AL, '0'
+    MOV AH, 0
+    PUSH AX
+    
+    MOV AX, BX
+    MUL CX
+    POP BX
+    ADD AX, BX
+    MOV BX, AX
+    JMP INPUT_LOOP
+
+INPUT_DONE:
+    MOV AX, BX
+    CMP DX, 1     ; Check if negative
+    JNE DONE
+    NEG AX        ; Make negative if needed
+
+DONE:
+    POP DX
+    POP CX
+    POP BX
+    RET
+
+INVALID:
+    MOV AX, 0FFFFh    ; Return error code
+    POP DX
+    POP CX
+    POP BX
+    RET
+GET_NUM ENDP
+
+PRINT_NUM PROC
+    PUSH AX
+    PUSH BX
+    PUSH CX
+    PUSH DX
+    
+    CMP AX, 0
+    JGE POSITIVE
+    NEG AX
+    MOV AH, 2
+    MOV DL, '-'
+    INT 21H
+
+POSITIVE:
+    MOV BX, 10
+    MOV CX, 0
+
+CONVERT_LOOP:
+    MOV DX, 0
+    DIV BX
+    PUSH DX
+    INC CX
+    CMP AX, 0
+    JNE CONVERT_LOOP
+
+PRINT_LOOP:
+    POP DX
+    ADD DL, '0'
+    MOV AH, 2
+    INT 21H
+    LOOP PRINT_LOOP
+    
+    MOV AH, 2
+    MOV DL, 13
+    INT 21H
+    MOV DL, 10
+    INT 21H
+
+    POP DX
+    POP CX
+    POP BX
+    POP AX
+    RET
+PRINT_NUM ENDP
+
+END MAIN
